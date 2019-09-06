@@ -54,4 +54,7 @@ dependencies {
     implementation "org.msgpack:msgpack-core:${msgpack_version}"
 
     implementation "com.squareup.okhttp3:okhttp:${okhttp_version}"
+
+    implementation 'com.h6ah4i.android.widget.advrecyclerview:advrecyclerview:1.0.0'
+
 }

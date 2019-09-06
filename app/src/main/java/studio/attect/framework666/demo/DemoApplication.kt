@@ -7,6 +7,8 @@ import studio.attect.framework666.demo.fragment.CacheComponent
 import studio.attect.framework666.demo.fragment.CrashAndANRComponentX
 import studio.attect.framework666.demo.fragment.NormalComponent
 import studio.attect.framework666.demo.fragment.RecyclerViewComponent
+import studio.attect.framework666.demo.simple.GroupRecyclerComponent
+import studio.attect.framework666.demo.simple.SimpleRecyclerViewComponent
 
 /**
  * 此Demo App的Application
@@ -34,6 +36,8 @@ class DemoApplication : ApplicationX() {
         ComponentXMap.mark(CacheComponent.Companion)
         ComponentXMap.mark(NormalComponent.Companion)
         ComponentXMap.mark(RecyclerViewComponent.Companion)
+        ComponentXMap.mark(SimpleRecyclerViewComponent.Companion)
+        ComponentXMap.mark(GroupRecyclerComponent.Companion)
     }
 
 
