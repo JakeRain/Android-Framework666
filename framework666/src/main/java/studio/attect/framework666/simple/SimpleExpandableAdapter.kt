@@ -8,19 +8,45 @@ import android.view.ViewGroup
 import androidx.annotation.LayoutRes
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.util.*
-import com.h6ah4i.android.widget.advrecyclerview.adapter.ItemIdComposer
+import com.h6ah4i.android.widget.advrecyclerview.expandable.RecyclerViewExpandableItemManager
 import com.h6ah4i.android.widget.advrecyclerview.utils.AbstractExpandableItemAdapter
 import com.h6ah4i.android.widget.advrecyclerview.utils.AbstractExpandableItemViewHolder
 import studio.attect.framework666.R
 import studio.attect.framework666.interfaces.UniqueData
+import java.lang.IllegalStateException
 
-
-class SimpleExpandableAdapter<T>(val owner : T): AbstractExpandableItemAdapter<SimpleExpandableAdapter.ExpandableBasicViewHolder<out UniqueData>, SimpleExpandableAdapter.ExpandableBasicViewHolder<out UniqueData>>(){
-
+/**
+ * 有三个集合数据
+ * 1. viewHolderMap 存放注册进来的布局文件
+ * 2. groupList     存放组数据
+ * 3. childMap   存放二级数据
+ *
+ * 一级数据和二级数据通过一级数据来与二级的数据来互相绑定
+ *
+ * SimpleListData中有一个id 不但给adapter用,也是给一级数据和二级数据之间绑定关系用的
+ *
+ * group 的id值和child的id值是分别取自 自增长的groupIndex和childIndex的值
+ *
+ *
+ * @author caoyu
+ */
+class SimpleExpandableAdapter<T>(val owner: T, val exManager: RecyclerViewExpandableItemManager) : AbstractExpandableItemAdapter<SimpleExpandableAdapter.ExpandableBasicViewHolder<out UniqueData>, SimpleExpandableAdapter.ExpandableBasicViewHolder<out UniqueData>>() {
 
     init {
         setHasStableIds(true)
     }
+
+    /**
+     * 为数据添加自增长的id
+     */
+    private var groupIndex = 0L
+        get() {
+            return field++
+        }
+    private var childIndex = 0L
+        get() {
+            return field++
+        }
 
     /**
      * 根据不同的类型持有不同ViewHolder的class
@@ -30,12 +56,15 @@ class SimpleExpandableAdapter<T>(val owner : T): AbstractExpandableItemAdapter<S
     /**
      * group的数据
      */
-    val dataList = ArrayList<SimpleListData<out UniqueData>>()
+    val groupList = ArrayList<SimpleListData<out UniqueData>>()
 
-    /**
-     * 二级列表的数据
-     */
-    val childSparse = SparseArray< ArrayList<SimpleListData<out UniqueData>>>()
+//    /**
+//     * 二级列表的数据
+//     */
+//    val childSparse = SparseArray<ArrayList<SimpleListData<out UniqueData>>>()
+
+
+    val childMap = HashMap<SimpleListData<out UniqueData>, ArrayList<SimpleListData<out UniqueData>>>()
 
     /**
      * 注册一个类型的ViewHolder（Class）
@@ -48,7 +77,7 @@ class SimpleExpandableAdapter<T>(val owner : T): AbstractExpandableItemAdapter<S
     }
 
     /**
-     * 添加一个数据
+     * 添加一个空组数据
      *
      * @param data 要加入列表的数据
      * @param layoutRes 添加的数据对应的布局,fake为true时，可以给定任意值
@@ -57,168 +86,154 @@ class SimpleExpandableAdapter<T>(val owner : T): AbstractExpandableItemAdapter<S
      * @return 添加的新数据的位置
      */
     @JvmOverloads
-    fun addGroupData(data: UniqueData, @LayoutRes layoutRes: Int, position: Int = dataList.size, fake: Boolean = false): Int {
+    fun addGroupData(data: UniqueData, @LayoutRes layoutRes: Int, groupPosition: Int = groupList.size, fake: Boolean = false): Int {
+        if (groupPosition !in 0..groupList.size) throw IllegalStateException("SimpleExpandableAdapter group position is out of range")
         if (fake) {
-            return position
+            return groupPosition
         }
-        val simpData = SimpleListData(data , layoutRes)
-        simpData.id = dataList.size.toLong()
-        dataList.add(position, simpData)
-        notifyItemInserted(position)
-        return position
+        val simpData = SimpleListData(data, layoutRes)
+        simpData.id = groupIndex
+        groupList.add(groupPosition, simpData)
+        exManager.notifyGroupItemInserted(groupPosition)
+        return groupPosition
     }
 
-
-
+    /**
+     * 添加某一组中的一条child数据
+     */
     @JvmOverloads
-    fun addChildData(data: UniqueData , @LayoutRes layoutRes: Int , groupPosition: Int = dataList.size-1 , childPosition: Int = childSparse[dataList.size-1]?.size?:0 , fake: Boolean = false): Int{
-        if(fake){
+    fun addChildIntoGroupData(data: UniqueData, @LayoutRes childLayout: Int, groupPosition: Int = groupList.lastIndex,
+                              childPosition: Int = childMap[groupList[groupPosition]]?.size ?: 0,
+                              fake: Boolean = false): Int {
+        if (groupPosition !in 0..groupList.lastIndex) throw IllegalArgumentException("SimpleExpandableAdapter child position is out of range")
+        val childSize = childMap[groupList[groupPosition]]?.size ?: 0
+        if (childPosition !in 0..childSize) throw IllegalStateException("SimpleExpandableAdapter group position is out of range")
+        if (fake) {
             return childPosition
         }
-        if(childSparse[groupPosition] == null){
-            childSparse[groupPosition] = ArrayList()
+        val groupSimpleData = groupList[groupPosition]
+        if (childMap[groupSimpleData] == null) childMap[groupSimpleData] = ArrayList()
+        val simpleData = SimpleListData(data, childLayout)
+        simpleData.id = childIndex
+        childMap[groupSimpleData]?.add(childPosition, simpleData)
+        exManager.notifyChildItemInserted(groupPosition, childPosition)
+        return childPosition
+    }
+
+    /**
+     * 一次性添加同一组中的多条字数据
+     */
+    @JvmOverloads
+    fun addChildrenIntoGroup(childDatas: ArrayList<UniqueData>, @LayoutRes childLayout: Int, groupPosition: Int = groupList.size, childPosition: Int = childMap[groupList[groupPosition]]?.size
+            ?: 0, fake: Boolean = false): Int {
+        //判断是否越界
+        if (groupPosition !in 0..groupList.size) throw IllegalStateException("SimpleExpandableAdapter groupPosition is out of range")
+        val childSize = childMap[groupList[groupPosition]]?.size ?: 0
+        if (childPosition !in 0..childSize) throw IllegalStateException("SimpleExpandableAdapter childPosition is out of range")
+        if (fake) return childPosition
+        val groupDatas = childMap[groupList[groupPosition]]
+        childDatas.forEachIndexed { index, child ->
+            val simpleData = SimpleListData(child, childLayout)
+            simpleData.id = childIndex
+            groupDatas?.add(childPosition + index, simpleData)
         }
-        val simpleData = SimpleListData(data , layoutRes)
-        simpleData.id = childSparse[groupPosition].size.toLong()
-        childSparse[groupPosition].add(childPosition , SimpleListData(data , layoutRes))
-        notifyDataSetChanged()
+        exManager.notifyChildItemRangeInserted(groupPosition, childPosition, childDatas.size)
         return childPosition
     }
 
 
-
     /**
-     * 连续添加多个数据  到一个ｇｒｏｕｐ中
-     *
-     * @param moreData 要添加的多条数据,如果需要特别定制，部分值可传入SimpleListData，就可以为同一系列数据类型中的其中一个或多个使用不同的layout
-     * @layoutRes 数据集对应的布局资源，若数据自身为SimpleListData则采用数据指定的，fake为true时，可以给定任意值
-     * @param fake 是否做假操作，可以获得最靠前的新数据的位置或判断是否有数据被添加
-     * @return 第一条的位置,null时表示没有任何数据被添加
+     * 一次性添加一组
+     * 和这个组下面的多条数据
+     * @param groupData 组数据
+     * @param childDatas 子数据列表
+     * @param groupLayout 组布局文件
+     * @param childLayout 子布局文件
+     * @param groupPosition 组位置
+     * @return 返回需要插入的组的数据
      */
     @JvmOverloads
-    fun addMoreDataInGroup(moreData: List<UniqueData>, @LayoutRes layoutRes: Int, groupPosition: Int = dataList.size-1, childPosition: Int = childSparse[dataList.size -1]?.size?:0 , fake: Boolean = false): Int? {
-        if (!moreData.isNullOrEmpty()) {
-            if (!fake) {
-                moreData.forEach {
-                    if (it is SimpleListData<*>) {
-                        childSparse[groupPosition].add(childPosition ,it)
-                    } else {
-                        childSparse[groupPosition].add(childPosition , SimpleListData(it, layoutRes))
-                    }
-                }
-                notifyItemRangeInserted(childPosition, moreData.size)
-            }
-            return childPosition
+    fun addGroupChildDatas(childDatas: ArrayList<UniqueData>,
+                           groupData: UniqueData,
+                           @LayoutRes childLayout: Int, @LayoutRes groupLayout: Int,
+                           groupPosition: Int = groupList.size, fake: Boolean = false): Int {
+        if (fake) return groupPosition
+        val groupSimpleData = SimpleListData(groupData, groupLayout)
+        groupSimpleData.id = groupIndex
+        groupList.add(groupSimpleData)
+        if (childMap[groupSimpleData] == null) {
+            childMap.put(groupSimpleData, ArrayList())
         }
-        return null
-    }
-
-
-
-
-
-
-    /**
-     * 更新一个数据
-     * 根据唯一tag进行更新
-     * 只会更新一条（废话，数据唯一标识）
-     * 此方法作用为无需判断数据的存在及其位置无脑通知视图更新内容
-     *
-     * @param data 要更新的数据，不依赖内存地址判断而是根据唯一Tag
-     * @param layoutRes 更新数据后的布局，fake为true时，可以给定任意值
-     * @param fake 是否做假操作，可以获得被更新的数据的位置或判断是否有数据被更新
-     * @return 更新的数据的位置，如果没有数据被更新则为null
-     */
-    fun updateChildData(data: UniqueData, @LayoutRes layoutRes: Int, fake: Boolean = false): Int? {
-        var position = -1
-        var id = 0L
-        var groupPosition = -1
-
-        childSparse.keyIterator().forEach { gPosition->
-            childSparse[gPosition]?.forEachIndexed{index ,simpleListData->
-                if(simpleListData.uniqueTag() == data.uniqueTag()){
-                    position = index
-                    groupPosition = gPosition
-                    id = simpleListData.id
-                    return@forEachIndexed
-                }
-            }
+        childMap[groupSimpleData]?.clear()
+        childDatas.forEachIndexed { _, child ->
+            val childSimpleData = SimpleListData(child, childLayout)
+            childSimpleData.id = childIndex
+            childMap[groupSimpleData]?.add(childSimpleData)
         }
-
-        if (position > -1 && groupPosition > -1) {
-            if (!fake) {
-                val simpleListData = SimpleListData(data , layoutRes)
-                simpleListData.id = id
-                childSparse[groupPosition][position] = simpleListData
-                notifyItemChanged(position)
-            }
-            return position
-        }
-        return null
-    }
-
-
-    fun updateGroupData(data: UniqueData , @LayoutRes layoutRes: Int , fake: Boolean = false):Int?{
-        var position = -1
-        dataList.forEachIndexed { index, simpleListData ->
-            if (simpleListData.uniqueTag() == data.uniqueTag()) {
-                position = index
-                return@forEachIndexed
-            }
-        }
-        if (position > -1) {
-            if (!fake) {
-                dataList[position] = SimpleListData(data, layoutRes)
-                notifyItemChanged(position)
-            }
-            return position
-        }
-        return null
+        exManager.notifyGroupItemInserted(groupPosition)
+        exManager.notifyChildItemRangeInserted(groupPosition , 0 , childDatas.size)
+        return groupPosition
     }
 
 
     /**
-     * 更新多个数据
-     * 根据唯一的tag进行更新
-     * 此方法作用为无需判断数据的存在及其位置无脑通知视图更新内容
-     *
-     * @param moreData 要更新的多个数据，更新可能/可以不连续，不依赖内存地址判断而是根据唯一Tag
-     * @param layoutRes 数据集对应的布局资源，若数据自身为SimpleListData则采用数据指定的，fake为true时，可以给定任意值
-     * @param fake 是否做假操作，可以获得最靠前的被更新的数据的位置或判断是否有数据被更新
-     * @return 变更的数据的位置，若没有数据变更则为空的数组
+     * 实现一次性添加多组空数据
      */
-    fun updateMoreData(moreData: List<UniqueData>, @LayoutRes layoutRes: Int, fake: Boolean = false): IntArray {
-        val replaceData = SparseArray<SimpleListData<out UniqueData>>()
-        moreData.forEach { newData ->
-            dataList.forEachIndexed { index, simpleListData ->
-                if (newData.uniqueTag() == simpleListData.uniqueTag()) {
-                    if (newData is SimpleListData<*>) {
-                        replaceData[index] = newData
-                    } else {
-                        replaceData[index] = SimpleListData(newData, layoutRes)
+    @JvmOverloads
+    fun addEmptyGroupDataList(groupDatas: ArrayList<UniqueData>, @LayoutRes groupLayout: Int, groupPosition: Int = groupList.size, fake: Boolean = false): Int {
+        if (fake) return groupPosition
+        groupDatas.forEachIndexed { index, data ->
+            val simpData = SimpleListData(data, groupLayout)
+            simpData.id = groupIndex
+            groupList.add(groupPosition + index, simpData)
+        }
+        exManager.notifyGroupItemRangeInserted(groupPosition, groupDatas.size)
+        return groupPosition
+    }
+
+    /**
+     *
+     */
+    @JvmOverloads
+    fun updateChildData(childData: UniqueData, @LayoutRes childLayout: Int, groupPosition: Int = -1, fake: Boolean = false): Int {
+        var cPosition = -1
+        var gPosition = groupPosition
+        if (groupPosition == -1) {
+
+            groupList.forEachIndexed stepOut@ { gIndex, groupData ->
+                childMap[groupData]?.forEachIndexed { cIndex, childData ->
+                    if (childData.uniqueTag() == childData.uniqueTag()) {
+                        cPosition = cIndex
+                        gPosition = gIndex
+                        return@stepOut
                     }
                 }
             }
         }
-
-        val intArray = IntArray(replaceData.size())
-        for (i in 0 until replaceData.size()) {
-            intArray[i] = replaceData.keyAt(i)
+        if (gPosition !in 0..groupList.lastIndex) {
+            throw IllegalStateException("SimpleExpandableRecyclerView group position is out of range")
         }
-
-        return if (replaceData.isNotEmpty()) {
-            if (!fake) {
-                replaceData.forEach { key, value ->
-                    dataList[key] = value
-                    notifyItemChanged(key)
-                }
-            }
-            intArray
-        } else {
-            IntArray(0)
-        }
+        if (cPosition == -1 || fake) return cPosition
+        val childList = childMap[groupList[gPosition]]
+        //复用旧数据的id
+        val oldId = childList?.get(cPosition)?.id ?: childIndex
+        val simpleListData = SimpleListData(childData, childLayout)
+        simpleListData.id = oldId
+        childList?.set(cPosition, simpleListData)
+        exManager.notifyChildItemChanged(gPosition, cPosition)
+        return cPosition
     }
 
+    /**
+     * 直接根据tag查处所有tag的数据修改调
+     * 前提layout相同
+     */
+    @JvmOverloads
+    fun updateChildrenDataInGroup(childList: ArrayList<UniqueData>, @LayoutRes childLayout: Int, groupPosition: Int = -1) {
+        childList.forEach { child ->
+            updateChildData(child, childLayout, groupPosition)
+        }
+    }
 
 
     /**
@@ -230,23 +245,24 @@ class SimpleExpandableAdapter<T>(val owner : T): AbstractExpandableItemAdapter<S
      * @param fake 是否做假操作，可以获得被删除的数据的位置或判断有没有数据被删除，fake为true时，可以给定任意值
      * @return 删除的数据的位置，如果没有数据被删除则为null
      */
-    fun removeData(data: UniqueData, fake: Boolean = false): Int? {
-        var position = -1
-        dataList.forEachIndexed { index, simpleListData ->
-            if (simpleListData.uniqueTag() == data.uniqueTag()) {
-                position = index
-                return@forEachIndexed
+    fun removeChildData(data: UniqueData, fake: Boolean = false): Int? {
+        var gPosition = -1
+        var cPosition = -1
+        childMap.keys.forEach { group ->
+            childMap[group]?.forEachIndexed { index, child ->
+                if (data.uniqueTag() == child.uniqueTag()) {
+                    cPosition = index
+                    gPosition = groupList.indexOf(group)
+                    return@forEach
+                }
             }
         }
-        if (position > -1) {
-            if (!fake) {
-                dataList.removeAt(position)
-                notifyItemRemoved(position)
-            }
 
-            return position
+        if (cPosition != -1 && gPosition != -1) {
+            childMap[groupList[gPosition]]?.removeAt(cPosition)
+            exManager.notifyChildItemRemoved(gPosition, cPosition)
         }
-        return null
+        return cPosition
     }
 
     /**
@@ -256,127 +272,142 @@ class SimpleExpandableAdapter<T>(val owner : T): AbstractExpandableItemAdapter<S
      * 此方法可用于无需判断数据是否存在进行安全删除操作调用，并能得知结果
      *
      * @param moreData 要删除的多个数据，删除可能/可以不连续，不依赖内存地址判断而是根据唯一Tag
-     * @param fake 是否做假操作，可以获得最靠前的被删除的数据的位置或判断是否有数据被删除，fake为true时，可以给定任意值
      * @return 被删除的数据的所有位置，若没有数据被删除则为空的数组
      */
-    fun removeMoreData(moreData: List<UniqueData>, fake: Boolean = false): IntArray {
-        val removeData = SparseArray<SimpleListData<out UniqueData>>()
+    fun removeMoreData(moreData: List<UniqueData>) {
+        val removeData = HashMap<SimpleListData<out UniqueData>, ArrayList<SimpleListData<out UniqueData>>>()
         moreData.forEach { removeTarget ->
-            dataList.forEachIndexed { index, simpleListData ->
-                if (removeTarget.uniqueTag() == simpleListData.uniqueTag()) {
-                    removeData[index] = simpleListData //此处和update不一样
+            childMap.keys.forEach { group ->
+                childMap[group]?.forEachIndexed { index, simpleListData ->
+                    if (removeTarget.uniqueTag() == simpleListData.uniqueTag()) {
+                        if (removeData[group] == null) {
+                            removeData[group] = ArrayList()
+                        }
+                        removeData[group]?.add(simpleListData)
+                    }
                 }
             }
         }
-
-        val intArray = IntArray(removeData.size())
-        for (i in 0 until removeData.size()) {
-            intArray[i] = removeData.keyAt(i)
-        }
-
-        return if (removeData.isNotEmpty()) {
-            if (!fake) {
-                val idList = arrayListOf<Int>()
-                for (i in 0 until removeData.size()) {
-                    idList.add(i)
-                }
-                idList.reversed().forEach {
-                    //颠倒过来，从后往前删，避免key(position)变动
-                    dataList.removeAt(it)
-                    notifyItemRemoved(it)
-                }
-            }
-            intArray
-        } else {
-            IntArray(0)
+        if (removeData.isNotEmpty()) {
+           removeData.keys.forEach{group->
+               val gPosition = groupList.indexOf(group)
+               removeData[group]?.forEach {child->
+                   val cPosition = childMap[group]?.indexOf(child)?:-1
+                   if(cPosition == -1)return
+                   childMap[group]?.remove(child)
+                   exManager.notifyChildItemRemoved(gPosition , cPosition)
+               }
+           }
         }
     }
+
+
+    /**
+     * 删除一组数据
+     */
+    @JvmOverloads
+    fun removeGroupData(groupData:UniqueData , fake: Boolean = false):Int{
+        var position = -1
+        var groupSimpleListData : SimpleListData<out UniqueData>? = null
+        groupList.forEachIndexed{index , group->
+            if(group.uniqueTag() == groupData.uniqueTag()){
+                position = index
+                groupSimpleListData = group
+                return@forEachIndexed
+            }
+        }
+        if(position == -1 || fake)return position
+        groupList.removeAt(position)
+        childMap.remove(groupSimpleListData)
+        exManager.notifyGroupItemRemoved(position)
+        return position
+    }
+
+
+
 
     /**
      * 清空表内容
      * @return 移除了多少条数据
      */
     fun clearData(): Int {
-        val size = dataList.size
-        dataList.clear()
-        childSparse.clear()
+        val size = groupList.size
+        groupList.clear()
+        childMap.clear()
         notifyDataSetChanged()
         return size
     }
 
 
     override fun getChildCount(groupPosition: Int): Int {
-        if(childSparse[groupPosition] == null)return 0
-        return childSparse[groupPosition].size
+        return childMap[groupList[groupPosition]]?.size ?: 0
     }
 
     override fun onCheckCanExpandOrCollapseGroup(holder: ExpandableBasicViewHolder<out UniqueData>, groupPosition: Int, x: Int, y: Int, expand: Boolean): Boolean {
-       return true
+        return true
     }
 
     override fun onCreateGroupViewHolder(parent: ViewGroup?, viewType: Int): ExpandableBasicViewHolder<out UniqueData> {
-        if(viewHolderMap.contains(viewType)){
-            return buildViewHolder(LayoutInflater.from(parent?.context).inflate(viewType , parent , false), viewHolderMap[viewType])
+        if (viewHolderMap.contains(viewType)) {
+            return buildViewHolder(LayoutInflater.from(parent?.context).inflate(viewType, parent, false), viewHolderMap[viewType])
         }
         return DefaultViewHolder(LayoutInflater.from(parent?.context).inflate(R.layout.recycler_view_unprocessed_data, parent, false))
     }
 
     override fun onCreateChildViewHolder(parent: ViewGroup?, viewType: Int): ExpandableBasicViewHolder<out UniqueData> {
-        if(viewHolderMap.contains(viewType)){
-            return buildViewHolder(LayoutInflater.from(parent?.context).inflate(viewType , parent , false) , viewHolderMap[viewType])
+        if (viewHolderMap.contains(viewType)) {
+            return buildViewHolder(LayoutInflater.from(parent?.context).inflate(viewType, parent, false), viewHolderMap[viewType])
         }
         return DefaultViewHolder(LayoutInflater.from(parent?.context).inflate(R.layout.recycler_view_unprocessed_data, parent, false))
     }
 
     override fun getGroupId(groupPosition: Int): Long {
-        return dataList[groupPosition].id
+        return groupList[groupPosition].id
     }
 
     override fun onBindChildViewHolder(holder: ExpandableBasicViewHolder<out UniqueData>, groupPosition: Int, childPosition: Int, viewType: Int) {
         if (holder is DefaultViewHolder) {
-            holder.applyData(dataList[groupPosition], groupPosition)
+            holder.applyData(groupList[groupPosition], groupPosition)
             return
         }
         @Suppress("UNCHECKED_CAST")
-        (holder as ExpandableBasicViewHolder<UniqueData>).applyData(childSparse[groupPosition].get(childPosition).listData , childPosition)
+        childMap[groupList[groupPosition]]?.get(childPosition)?.listData?.let { (holder as ExpandableBasicViewHolder<UniqueData>).applyData(it, childPosition) }
+
     }
+
     override fun onBindGroupViewHolder(holder: ExpandableBasicViewHolder<out UniqueData>, groupPosition: Int, viewType: Int) {
         if (holder is DefaultViewHolder) {
-            holder.applyData(dataList[groupPosition], groupPosition)
+            holder.applyData(groupList[groupPosition], groupPosition)
             return
         }
         @Suppress("UNCHECKED_CAST")
-        (holder as ExpandableBasicViewHolder<UniqueData>).applyData( dataList[groupPosition].listData, groupPosition)
+        (holder as ExpandableBasicViewHolder<UniqueData>).applyData(groupList[groupPosition].listData, groupPosition)
     }
 
 
-    override fun getChildId(groupPosition: Int, childPosition: Int): Long{
-        return childSparse[groupPosition].get(childPosition).id
+    override fun getChildId(groupPosition: Int, childPosition: Int): Long {
+        return childMap[groupList[groupPosition]]?.get(childPosition)?.id ?: 0L
     }
 
     override fun getGroupCount(): Int {
-        return dataList.size
+        return groupList.size
     }
 
 
-
     override fun getChildItemViewType(groupPosition: Int, childPosition: Int): Int {
-        if(childSparse[groupPosition].size > childPosition){
-            return childSparse[groupPosition].get(childPosition).layoutRes
+        if (childMap[groupList[groupPosition]]?.size ?: 0 > childPosition) {
+            return childMap[groupList[groupPosition]]?.get(childPosition)?.layoutRes
+                    ?: R.layout.recycler_view_unprocessed_data
         }
         return R.layout.recycler_view_unprocessed_data
     }
 
     override fun getGroupItemViewType(groupPosition: Int): Int {
-        if(groupPosition < dataList.size){
-            return dataList[groupPosition].layoutRes
+        if (groupPosition < groupList.size) {
+            return groupList[groupPosition].layoutRes
         }
         return R.layout.recycler_view_unprocessed_data
     }
-
-
-
-
 
 
     /**
@@ -416,13 +447,9 @@ class SimpleExpandableAdapter<T>(val owner : T): AbstractExpandableItemAdapter<S
     }
 
 
-
-
-
-    abstract class ExpandableBasicViewHolder<T : UniqueData>(itemView : View) : AbstractExpandableItemViewHolder(itemView) {
+    abstract class ExpandableBasicViewHolder<T : UniqueData>(itemView: View) : AbstractExpandableItemViewHolder(itemView) {
         abstract fun applyData(data: T, position: Int)
     }
-
 
 
     /**
@@ -430,8 +457,7 @@ class SimpleExpandableAdapter<T>(val owner : T): AbstractExpandableItemAdapter<S
      * 将UniqueData与布局资源进行绑定
      */
     class SimpleListData<T : UniqueData>(val listData: T, @LayoutRes val layoutRes: Int) : UniqueData {
-        var id : Long = 0
+        var id: Long = 0L
         override fun uniqueTag() = listData.uniqueTag()
     }
-
 }

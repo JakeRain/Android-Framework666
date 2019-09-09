@@ -1,9 +1,12 @@
 package studio.attect.framework666
 
+import androidx.test.runner.AndroidJUnit4
 import org.junit.Test
 
 import org.junit.Assert.*
+import org.junit.runner.RunWith
 
+@RunWith(AndroidJUnit4::class)
 class LogcatTest {
 
     @Test
@@ -45,4 +48,9 @@ class LogcatTest {
     fun e1() {
         Logcat.e("error level string without tag")
     }
+
+
+
+
+
 }

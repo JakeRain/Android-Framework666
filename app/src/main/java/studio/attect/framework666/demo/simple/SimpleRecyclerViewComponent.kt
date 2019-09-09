@@ -34,7 +34,10 @@ import studio.attect.framework666.simple.SimpleRecyclerViewAdapter
  * @author caoyu
  */
 class SimpleRecyclerViewComponent : FragmentX() {
-    private val recyclerViewAdapter = SimpleExpandableAdapter(this)
+
+    private val expMgr = RecyclerViewExpandableItemManager(null)
+
+    private val recyclerViewAdapter = SimpleExpandableAdapter(this , expMgr)
     private val layoutManager by lazy { LinearLayoutManager(requireContext(), RecyclerView.VERTICAL, false) }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
@@ -50,12 +53,7 @@ class SimpleRecyclerViewComponent : FragmentX() {
                 resetAllData()
             }, 2000) //模拟两秒后停止
         }
-
-        // Setup expandable feature and RecyclerView
-        val expMgr = RecyclerViewExpandableItemManager(null)
-
         recyclerView.layoutManager = layoutManager
-
 
         //设置分割线
         val divider = DividerItemDecoration(requireContext(), layoutManager.orientation)
@@ -94,7 +92,7 @@ class SimpleRecyclerViewComponent : FragmentX() {
         for(i in 0 until 5){
             recyclerViewAdapter.addGroupData(ItemData() , randomLayoutRes())
             for(j in 0 until 5){
-                recyclerViewAdapter.addChildData(ItemData(), randomLayoutRes() )
+                recyclerViewAdapter.addChildIntoGroupData(ItemData(), randomLayoutRes() )
             }
         }
     }
@@ -122,7 +120,7 @@ class SimpleRecyclerViewComponent : FragmentX() {
         recyclerView.smoothScrollToPosition(position)
         recyclerView.postDelayed({
             val data = ItemData()
-            recyclerViewAdapter.addChildData(data , layoutRes , groupPosition , position)
+            recyclerViewAdapter.addChildIntoGroupData(data , layoutRes , groupPosition , position)
         },
             resources.systemLongAnimTime)
     }
@@ -178,23 +176,23 @@ class SimpleRecyclerViewComponent : FragmentX() {
      * 可能只有部分甚至没有数据被更新
      */
     private fun updateMoreData() {
-        val moreData = arrayListOf<SimpleRecyclerViewAdapter.SimpleListData<ItemData>>()
-        val number = (2..10).shuffled().last()
-        val position = recyclerViewAdapter.updateMoreData(moreData, 0, true)
-        for (i in 0 until number) {
-            moreData.add(SimpleRecyclerViewAdapter.SimpleListData(ItemData(), randomLayoutRes()))
-        }
-        if (position.isNotEmpty()) {
-            recyclerView.smoothScrollToPosition(position[0])
-            recyclerView.postDelayed(
-                {
-                    recyclerViewAdapter.updateMoreData(moreData, 0) //layoutRes已经由SimpleListData确定
-                },
-                resources.systemLongAnimTime
-            )
-        } else {
-            Toast.makeText(requireContext(), "未更新任何数据", Toast.LENGTH_LONG).show()
-        }
+//        val moreData = arrayListOf<SimpleRecyclerViewAdapter.SimpleListData<ItemData>>()
+//        val number = (2..10).shuffled().last()
+//        val position = recyclerViewAdapter.updateMoreData(moreData, 0, true)
+//        for (i in 0 until number) {
+//            moreData.add(SimpleRecyclerViewAdapter.SimpleListData(ItemData(), randomLayoutRes()))
+//        }
+//        if (position.isNotEmpty()) {
+//            recyclerView.smoothScrollToPosition(position[0])
+//            recyclerView.postDelayed(
+//                {
+//                    recyclerViewAdapter.updateMoreData(moreData, 0) //layoutRes已经由SimpleListData确定
+//                },
+//                resources.systemLongAnimTime
+//            )
+//        } else {
+//            Toast.makeText(requireContext(), "未更新任何数据", Toast.LENGTH_LONG).show()
+//        }
     }
 
     /**
@@ -202,20 +200,20 @@ class SimpleRecyclerViewComponent : FragmentX() {
      * 可能没有数据被删除
      */
     private fun removeOneData() {
-        val data = ItemData()
-        val position = recyclerViewAdapter.removeData(data, true)
-        if (position != null) {
-            recyclerView.smoothScrollToPosition(position)
-            recyclerView.postDelayed(
-                {
-                    recyclerViewAdapter.removeData(data)
-                    Toast.makeText(requireContext(), "删除一个列表项：位置[$position]", Toast.LENGTH_LONG).show()
-                },
-                resources.systemLongAnimTime
-            )
-        } else {
-            Toast.makeText(requireContext(), "未删除任何数据", Toast.LENGTH_LONG).show()
-        }
+//        val data = ItemData()
+//        val position = recyclerViewAdapter.removeData(data, true)
+//        if (position != null) {
+//            recyclerView.smoothScrollToPosition(position)
+//            recyclerView.postDelayed(
+//                {
+//                    recyclerViewAdapter.removeData(data)
+//                    Toast.makeText(requireContext(), "删除一个列表项：位置[$position]", Toast.LENGTH_LONG).show()
+//                },
+//                resources.systemLongAnimTime
+//            )
+//        } else {
+//            Toast.makeText(requireContext(), "未删除任何数据", Toast.LENGTH_LONG).show()
+//        }
     }
 
     /**
@@ -223,23 +221,23 @@ class SimpleRecyclerViewComponent : FragmentX() {
      * 可能只有部分甚至没有数据被删除
      */
     private fun removeMoreData() {
-        val moreData = arrayListOf<SimpleRecyclerViewAdapter.SimpleListData<ItemData>>()
-        val number = (2..10).shuffled().last()
-        for (i in 0 until number) {
-            moreData.add(SimpleRecyclerViewAdapter.SimpleListData(ItemData(), randomLayoutRes()))
-        }
-        val position = recyclerViewAdapter.removeMoreData(moreData, true)
-        if (position.isNotEmpty()) {
-            recyclerView.smoothScrollToPosition(position[0])
-            recyclerView.postDelayed(
-                {
-                    recyclerViewAdapter.removeMoreData(moreData)
-                },
-                resources.systemLongAnimTime
-            )
-        } else {
-            Toast.makeText(requireContext(), "未删除任何数据", Toast.LENGTH_LONG).show()
-        }
+//        val moreData = arrayListOf<SimpleRecyclerViewAdapter.SimpleListData<ItemData>>()
+//        val number = (2..10).shuffled().last()
+//        for (i in 0 until number) {
+//            moreData.add(SimpleRecyclerViewAdapter.SimpleListData(ItemData(), randomLayoutRes()))
+//        }
+//        val position = recyclerViewAdapter.removeMoreData(moreData, true)
+//        if (position.isNotEmpty()) {
+//            recyclerView.smoothScrollToPosition(position[0])
+//            recyclerView.postDelayed(
+//                {
+//                    recyclerViewAdapter.removeMoreData(moreData)
+//                },
+//                resources.systemLongAnimTime
+//            )
+//        } else {
+//            Toast.makeText(requireContext(), "未删除任何数据", Toast.LENGTH_LONG).show()
+//        }
     }
 
 
